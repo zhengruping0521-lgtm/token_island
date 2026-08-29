@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="Resources/hero_banner.jpg" width="100%" alt="Token Island Hero Banner" />
+  <img src="Resources/demo.gif" width="100%" alt="Token Island Demo" />
 </p>
 
 <p align="center">
