@@ -43,6 +43,7 @@ struct MimirServiceData: Identifiable {
     let id = UUID()
     var name: String
     var iconName: String
+    var isAvailable: Bool = false
     
     // For ChatGPT / Codex
     var sessionRemaining: Int?
@@ -72,6 +73,7 @@ final class QuotaStore: ObservableObject {
     @Published var codexData = MimirServiceData(
         name: "Codex",
         iconName: "chatgpt",
+        isAvailable: true,
         sessionRemaining: 0,
         weeklyRemaining: 68,
         sessionResetAt: Date().addingTimeInterval(3 * 3600 + 40 * 60),
@@ -83,6 +85,7 @@ final class QuotaStore: ObservableObject {
     @Published var antigravityData = MimirServiceData(
         name: "Antigravity",
         iconName: "antigravity",
+        isAvailable: true,
         gemini5h: 83,
         geminiWeekly: 85,
         gemini5hResetAt: Date().addingTimeInterval(3 * 3600 + 30 * 60),
@@ -119,6 +122,7 @@ final class QuotaStore: ObservableObject {
     private nonisolated func fetchFromSources() -> (MimirServiceData, MimirServiceData) {
         var agy = MimirServiceData(
             name: "Antigravity", iconName: "antigravity",
+            isAvailable: false,
             gemini5h: 83, geminiWeekly: 85,
             gemini5hResetAt: nil, geminiWeeklyResetAt: nil,
             claude5h: 100, claudeWeekly: 23,
@@ -127,6 +131,7 @@ final class QuotaStore: ObservableObject {
         
         var cdx = MimirServiceData(
             name: "Codex", iconName: "chatgpt",
+            isAvailable: false,
             sessionRemaining: 0, weeklyRemaining: 68,
             sessionResetAt: nil, weeklyResetAt: nil,
             resetCredits: 1, resetCreditsExpiry: "22d 15h"
@@ -181,6 +186,7 @@ final class QuotaStore: ObservableObject {
                            let avail = rlc["available_count"] as? Int {
                             cdx.resetCredits = avail
                         }
+                        cdx.isAvailable = true
                     }.resume()
                     _ = semaphore.wait(timeout: .now() + 4)
                     break
@@ -212,6 +218,7 @@ final class QuotaStore: ObservableObject {
                    let response = json["response"] as? [String: Any],
                    let groups = response["groups"] as? [[String: Any]], !groups.isEmpty {
                     
+                    agy.isAvailable = true
                     for group in groups {
                         let name = (group["displayName"] as? String ?? "").lowercased()
                         let buckets = group["buckets"] as? [[String: Any]] ?? []
@@ -332,151 +339,155 @@ struct MimirCardView: View {
     
     var body: some View {
         VStack(spacing: 11) {
-            // Card 1: CHATGPT
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "circle.hexagongrid.fill")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(ModelTheme.chatgpt.opacity(0.85))
-                    Text("CHATGPT")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.0)
-                        .foregroundColor(Color.white.opacity(0.55))
-                }
-                .padding(.bottom, 7)
-                
-                MimirQuotaBlock(
-                    label: "Current session",
-                    percent: store.codexData.sessionRemaining ?? 0,
-                    resetAt: store.codexData.sessionResetAt,
-                    now: now,
-                    modelColor: ModelTheme.chatgpt,
-                    windowFallback: 5 * 3600
-                )
-                
-                // Weekly row
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(ModelTheme.chatgpt)
-                        .frame(width: 6, height: 6)
-                    Text("All models: %\(clampPct(store.codexData.weeklyRemaining ?? 0))")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.85))
-                    Spacer()
-                    Text(relDuration(store.codexData.weeklyResetAt, now) ?? "5d 16h")
-                        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
-                .padding(.top, 8)
-                
-                Divider()
-                    .background(Color.white.opacity(0.12))
-                    .padding(.vertical, 7)
-                
-                // Reset credits
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10))
-                            Text("Reset credits")
-                                .font(.system(size: 11.5, weight: .medium))
-                        }
-                        .foregroundColor(Color.white.opacity(0.65))
-                        Spacer()
-                        Text("\(store.codexData.resetCredits ?? 1)")
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.95))
+            // Card 1: CHATGPT (仅当检测到 Codex/ChatGPT 或两者都未检测到时显示)
+            if store.codexData.isAvailable || (!store.codexData.isAvailable && !store.antigravityData.isAvailable) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "circle.hexagongrid.fill")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(ModelTheme.chatgpt.opacity(0.85))
+                        Text("CHATGPT")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.0)
+                            .foregroundColor(Color.white.opacity(0.55))
                     }
-                    Text("first expires in \(store.codexData.resetCreditsExpiry ?? "22d 15h")")
-                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.4))
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color(white: 0.10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .padding(.bottom, 7)
+                    
+                    MimirQuotaBlock(
+                        label: "Current session",
+                        percent: store.codexData.sessionRemaining ?? 0,
+                        resetAt: store.codexData.sessionResetAt,
+                        now: now,
+                        modelColor: ModelTheme.chatgpt,
+                        windowFallback: 5 * 3600
                     )
-            )
+                    
+                    // Weekly row
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(ModelTheme.chatgpt)
+                            .frame(width: 6, height: 6)
+                        Text("All models: %\(clampPct(store.codexData.weeklyRemaining ?? 0))")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.85))
+                        Spacer()
+                        Text(relDuration(store.codexData.weeklyResetAt, now) ?? "5d 16h")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.45))
+                    }
+                    .padding(.top, 8)
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.12))
+                        .padding(.vertical, 7)
+                    
+                    // Reset credits
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10))
+                                Text("Reset credits")
+                                    .font(.system(size: 11.5, weight: .medium))
+                            }
+                            .foregroundColor(Color.white.opacity(0.65))
+                            Spacer()
+                            Text("\(store.codexData.resetCredits ?? 1)")
+                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.95))
+                        }
+                        Text("first expires in \(store.codexData.resetCreditsExpiry ?? "22d 15h")")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.4))
+                    }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Color(white: 0.10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                )
+            }
             
-            // Card 2: ANTIGRAVITY
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.55))
-                    Text("ANTIGRAVITY")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.0)
-                        .foregroundColor(Color.white.opacity(0.55))
-                }
-                .padding(.bottom, 7)
-                
-                // Gemini Section
-                MimirQuotaBlock(
-                    label: "Gemini",
-                    percent: store.antigravityData.gemini5h ?? 83,
-                    resetAt: store.antigravityData.gemini5hResetAt,
-                    now: now,
-                    modelColor: ModelTheme.gemini,
-                    windowFallback: 5 * 3600
-                )
-                
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(ModelTheme.gemini)
-                        .frame(width: 6, height: 6)
-                    Text("Gemini: %\(clampPct(store.antigravityData.geminiWeekly ?? 85))")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.85))
-                    Spacer()
-                    Text(relDuration(store.antigravityData.geminiWeeklyResetAt, now) ?? "1d 2h")
-                        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
-                .padding(.top, 8)
-                
-                Divider()
-                    .background(Color.white.opacity(0.12))
-                    .padding(.vertical, 10)
-                
-                // Claude/GPT Section
-                MimirQuotaBlock(
-                    label: "Claude/GPT",
-                    percent: store.antigravityData.claude5h ?? 100,
-                    resetAt: store.antigravityData.claude5hResetAt,
-                    now: now,
-                    modelColor: ModelTheme.claude,
-                    windowFallback: 5 * 3600
-                )
-                
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(ModelTheme.claude)
-                        .frame(width: 6, height: 6)
-                    Text("Claude/GPT: %\(clampPct(store.antigravityData.claudeWeekly ?? 23))")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.85))
-                    Spacer()
-                    Text(relDuration(store.antigravityData.claudeWeeklyResetAt, now) ?? "1d 2h")
-                        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
-                .padding(.top, 8)
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color(white: 0.10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            // Card 2: ANTIGRAVITY (仅当检测到 Antigravity 或两者都未检测到时显示)
+            if store.antigravityData.isAvailable || (!store.codexData.isAvailable && !store.antigravityData.isAvailable) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(Color.white.opacity(0.55))
+                        Text("ANTIGRAVITY")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.0)
+                            .foregroundColor(Color.white.opacity(0.55))
+                    }
+                    .padding(.bottom, 7)
+                    
+                    // Gemini Section
+                    MimirQuotaBlock(
+                        label: "Gemini",
+                        percent: store.antigravityData.gemini5h ?? 83,
+                        resetAt: store.antigravityData.gemini5hResetAt,
+                        now: now,
+                        modelColor: ModelTheme.gemini,
+                        windowFallback: 5 * 3600
                     )
-            )
+                    
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(ModelTheme.gemini)
+                            .frame(width: 6, height: 6)
+                        Text("Gemini: %\(clampPct(store.antigravityData.geminiWeekly ?? 85))")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.85))
+                        Spacer()
+                        Text(relDuration(store.antigravityData.geminiWeeklyResetAt, now) ?? "1d 2h")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.45))
+                    }
+                    .padding(.top, 8)
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.12))
+                        .padding(.vertical, 10)
+                    
+                    // Claude/GPT Section
+                    MimirQuotaBlock(
+                        label: "Claude/GPT",
+                        percent: store.antigravityData.claude5h ?? 100,
+                        resetAt: store.antigravityData.claude5hResetAt,
+                        now: now,
+                        modelColor: ModelTheme.claude,
+                        windowFallback: 5 * 3600
+                    )
+                    
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(ModelTheme.claude)
+                            .frame(width: 6, height: 6)
+                        Text("Claude/GPT: %\(clampPct(store.antigravityData.claudeWeekly ?? 23))")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.85))
+                        Spacer()
+                        Text(relDuration(store.antigravityData.claudeWeeklyResetAt, now) ?? "1d 2h")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.45))
+                    }
+                    .padding(.top, 8)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Color(white: 0.10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                )
+            }
             
             // Footer: 居中文本与 yupi 署名（上下左右 11px 完美对称）
             VStack(spacing: 3) {
@@ -544,20 +555,34 @@ struct ScreenIslandView: View {
         .animation(.snappy(duration: 0.20, extraBounce: 0.0), value: isExpanded)
     }
     
-    /// 待机状态：仅显示 Codex 的 5h% / 1w%（无图标，%在数字后，/为白色）
+    /// 待机状态：仅显示可用模型的 5h% / 1w%（无图标，%在数字后，/为白色）
     private var collapsedPill: some View {
         HStack(spacing: 4) {
-            Text("\(clampPct(store.codexData.sessionRemaining ?? 0))%")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(ModelTheme.chatgpt)
-            
-            Text("/")
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundColor(.white)
-            
-            Text("\(clampPct(store.codexData.weeklyRemaining ?? 68))%")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(ModelTheme.chatgpt)
+            if store.codexData.isAvailable || !store.antigravityData.isAvailable {
+                Text("\(clampPct(store.codexData.sessionRemaining ?? 0))%")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(ModelTheme.chatgpt)
+                
+                Text("/")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.white)
+                
+                Text("\(clampPct(store.codexData.weeklyRemaining ?? 68))%")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(ModelTheme.chatgpt)
+            } else {
+                Text("\(clampPct(store.antigravityData.gemini5h ?? 83))%")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(ModelTheme.gemini)
+                
+                Text("/")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.white)
+                
+                Text("\(clampPct(store.antigravityData.geminiWeekly ?? 85))%")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(ModelTheme.gemini)
+            }
         }
         .padding(.horizontal, 7)
         .frame(height: 26)
