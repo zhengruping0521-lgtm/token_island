@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="Resources/AppIcon.png" width="120" height="120" alt="Token Island Icon" />
+  <img src="Resources/hero_banner.jpg" width="100%" alt="Token Island Hero Banner" />
 </p>
 
 <p align="center">
